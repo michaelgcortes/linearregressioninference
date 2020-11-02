@@ -1,0 +1,218 @@
+---
+Topic:
+Linear Regression
+
+Intro:
+In this 'linear regression' tutorial we will analyze a 'Housing Prices' dataset for 'statistical inference'.
+
+Linear regression is widely used for both inference and prediction.
+  1. Inference: We want to quantify + understand how some variables impact some other metric. This is stats.
+  2. Prediction: All we want to do is accurately predict some metric, thats it. This is ML. 
+
+Here we use R because the ease with which we can execute this study is unmatched in Python.
+
+The job: 
+  We have a bunch of house prices, and we wish to understand how the features of the homes influence the price of the house.
+---
+
+
+
+First, load up some packages.
+```{r}
+library(dplyr) # greatly simpifies data munging
+library(ggplot2) # a good R visualization package
+```
+
+
+Next, load the data into the environment.
+```{r}
+# Read in data as csv and drop variables 'X' and 'prefer'
+df <- read.csv("HousePrices.csv") %>% select(-X, -prefer)
+
+# Get the number of rows using the nrow() function
+num.rows <- nrow(df) 
+
+# Print the result to console
+print(paste0('number of rows in dataset = ', num.rows))
+
+# Output the first chuck of the dataframe to the output
+head(df)
+
+```
+
+
+Use the summary function to get a quick understanding of the variables in the dataset.
+```{r}
+# Use the summary() function to summarize the columns in the dataframe
+summary(df)
+
+```
+
+
+Examine the distribtion of the target variable. 
+```{r}
+# Plot a histogram of price
+ggplot(data=df, aes(x=price)) + geom_histogram()
+
+# Plot a histogram of the log of price
+ggplot(data=df, aes(x=log(price))) + geom_histogram()
+
+# Plot the distribution of lotsize
+ggplot(data=df, aes(x=lotsize)) + geom_histogram()
+
+# Plot distrubtion of lotsize on logscale
+ggplot(data=df, aes(x=log(lotsize))) + geom_histogram()
+
+# Look at relationship between price and lotsize
+ggplot(data=df, aes(x=lotsize, y=price)) + geom_point()
+
+# Look at relationship between price and bedrooms
+ggplot(data=df, aes(x=bedrooms, y=price, group=bedrooms)) + geom_boxplot()
+
+# Look at relationship between price and bathrooms
+ggplot(data=df, aes(x=bathrooms, y=price, group=bathrooms)) + geom_boxplot()
+
+# Look at relationship between price and air conditioners
+ggplot(data=df, aes(x=aircon, y=price, group=aircon)) + geom_boxplot()
+
+# Look at relationship between price and garage
+ggplot(data=df, aes(x=garage, y=price, group=garage)) + geom_boxplot()
+
+# Look at relationship between price and stories
+ggplot(data=df, aes(x=stories, y=price, group=stories)) + geom_boxplot()
+```
+
+
+
+Examine the correlations among the variables in the dataset
+```{r}
+# A word on lingo:
+# Stats: I need to dummy the factor variables before I estimate the correlation matrix. 
+# ML: I need to one hot encode the categorical variables before I compute the correlation matrix. 
+
+
+# dplyr makes this so easy to apply data transformations in a simple flow
+correlation.df <- df %>% mutate(driveway = ifelse(driveway == "yes", 1, 0)) %>% # redefine driveway variable as 1 or 0
+                  mutate(recreation = ifelse(recreation == "yes", 1, 0)) %>% # redefine recreation variable as 1 or 0
+                  mutate(fullbase = ifelse(fullbase == "yes", 1, 0)) %>% # redefine fullbase variable as 1 or 0
+                  mutate(gasheat = ifelse(gasheat == "yes", 1, 0)) %>% # redefine gasheat variable as 1 or 0
+                  mutate(aircon = ifelse(aircon == "yes", 1, 0)) %>%  # redefine aircon variable as 1 or 0
+                  cor(x=., method="kendall") %>% as.data.frame() %>% round(., 2) # apply the correlation function to the result
+
+# A note correlation methods available in cor(). method = "kendall" or "pearson"
+# "kendall" is a nonparametric method for determining the correlation between two numeric variables, doesn't have to be linear
+# "pearson" measures linear relationship between two numeric variables. 
+
+
+# Output dataframe
+correlation.df
+
+```
+
+
+Now we enforce some data types before running our linear regression. 
+```{r}
+# Define vector (like a list) of variables to coerce to numeric type
+numeric.variables <- c('price', 'lotsize', 'bathrooms', 'bedrooms')
+
+# Define vector of variables to coerce to factor type
+factor.variables <- c('stories', 'driveway', 'recreation', 'fullbase', 'gasheat', 'aircon', 'garage')
+
+# Make the type enforcements
+for(varname in numeric.variables){
+  df[[varname]] <- as.numeric(df[[varname]])
+}
+
+for(varname in factor.variables){
+  df[[varname]] <- as.factor(df[[varname]])
+}
+
+# Scale lotsize to be in units of 1000 sq ft. 
+df$lotsize <- df$lotsize / 1000
+```
+
+
+
+Write out the model using latex so we can understand what we are fitting to the data. 
+$$
+\begin{equation}
+\begin{aligned}
+
+\log(price) =\ & \beta_0 + \beta_1 \cdot \left( \text{lotsize} \right) + \beta_2 \cdot \left( \text{number of bedrooms} \right) + 
+              \beta_3 \cdot \left( \text{number of bathrooms} \right) + \\
+           & \beta_4 \cdot \left(\text{2 stories}\right) + \beta_5 \cdot \left(\text{3 stories}\right) + \beta_6 \cdot \left(\text{4 stories}\right) + \\
+           & \beta_7\cdot\left(\text{has driveway}\right) + \beta_8\cdot\left(\text{has recreation}\right) + \beta_9\cdot\left(\text{has full basement}\right) + \\
+           
+           & \beta_{10} \cdot \left( \text{has gas+heat}\right) + \beta_{11}\cdot\left(\text{has air conditioning}\right) + \\
+           & \beta_{12} \cdot \left(\text{1 garage}\right) + \beta_{13}\cdot\left(\text{2 garages}\right) + \beta_{14}\cdot\left(\text{3 garages}\right)
+          
+\end{aligned}
+\end{equation}
+$$
+
+
+
+Now that our dataset is all prepped up, we can execute the linear regression. This is our model:
+```{r}
+# Fit the linear model easily using the lm() function. 
+lm.fit <- lm(log(price) ~ lotsize + bedrooms + bathrooms + stories + driveway + recreation + fullbase + gasheat + aircon + garage,data=df)
+
+# Use the summary() function again, but this time on the lm() function output.
+summary(lm.fit)
+```
+
+
+
+Inspect residual plots to judge the quality of the model's fit
+```{r}
+# Use resid() function to extract the residuals from the fitted model
+lm.fit.residuals <- resid(lm.fit)
+
+# Compute shapiro's test of normality using the shapiro.test() function
+normality.test <- shapiro.test(lm.fit.residuals)
+p.value <- normality.test$p.value # extract the test's p-value
+
+# Create qqnorm plot of the residuals. Should be approximately straight line indicating normality.
+qqnorm(lm.fit.residuals)
+
+# Residuals should look like a normal distribution
+hist(lm.fit.residuals, main=paste0("histogram of residuals, shapiro-test p-value = ", round(p.value, 4)))
+
+# Plot the residuals vs fitted-values, we are looking for homoskedasticity
+lm.fitted.values <- fitted.values(lm.fit) # fitted.values() function extracts the fitted numbers
+plot(lm.fitted.values, residuals)
+```
+
+
+
+Most variables show up as being significant, but this is not quite true since we are technically performing multiple tests. 
+We can use bonferroni correction to get a more realistic estimate of which variables are impacting house prices. 
+```{r}
+# Compute the bonferroni corrected p-values and package them into a dataframe. 
+coef.summary <- coefficients(summary(lm.fit)) %>% as.data.frame() %>% rename(p_value = "Pr(>|t|)") %>% 
+  mutate(p_value_bonferroni = p.adjust(p=p_value, method="bonferroni")) %>% 
+  mutate(p_value = round(p_value, 4), p_value_bonferroni = round(p_value_bonferroni, 4)) %>%
+  mutate(changed_significance = ifelse(p_value_bonferroni > 0.05 & p_value < 0.05, TRUE, FALSE)) %>%
+  mutate(Variable = names(coefficients(lm.fit))) %>% mutate(significant = ifelse(p_value_bonferroni < 0.05, TRUE, FALSE)) %>% 
+  filter(Variable != "(Intercept)")
+
+
+# Display output
+coef.summary
+
+# Since we regress on log(price), we need to exp() the coefficients to interpret their effect on price. 
+coef.summary <- coef.summary %>% mutate(impact = round((exp(Estimate) - 1)*100, 2))
+
+# Visualize impacts
+coef.summary %>% mutate(sig.code=ifelse(significant, "*", "")) %>%
+ggplot(data=.) + geom_bar(aes(x=Variable, y=impact), stat="identity") + 
+theme(axis.text.x = element_text(angle = 90)) + geom_text(aes(x=Variable, y=impact, label=sig.code))
+```
+
+
+
+
+
+
+
+
